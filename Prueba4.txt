@@ -1,0 +1,62 @@
+#Steps to create a data pipeline using Google Analytics data
+
+#1 Using google.oauth2, authenticate with the service-account-key.json file (you must download this file to your device first)
+#2 Get data from Google analytics API into a response object, one response for each week
+#3 Parse those responses and load them into pandas dataframes
+#4 Load each dataframe to the Bigquery table using load_table_from_dataframe method
+#5 Run the query that compares the two weeks and outputs the report
+
+
+CREATE TABLE 'WEEK_CHANGE_REPORT' (
+    week_start_date DATE,
+    sessions INT64,
+    pageviews INT64,
+    users INT64,
+    bounce_rate FLOAT64,
+    conversion_rate FLOAT64
+);
+
+
+Query:
+
+WITH PreviousWeekData AS (
+  SELECT 
+    week_start_date,
+    sessions,
+    pageviews,
+    users,
+    bounce_rate,
+    conversion_rate,
+    LAG(sessions) OVER (ORDER BY week_start_date) AS previous_sessions,
+    LAG(pageviews) OVER (ORDER BY week_start_date) AS previous_pageviews,
+    LAG(users) OVER (ORDER BY week_start_date) AS previous_users,
+    LAG(bounce_rate) OVER (ORDER BY week_start_date) AS previous_bounce_rate,
+    LAG(conversion_rate) OVER (ORDER BY week_start_date) AS previous_conversion_rate
+  FROM 
+    WEEK_CHANGE_REPORT
+)
+SELECT 
+  week_start_date,
+  sessions,
+  pageviews,
+  users,
+  bounce_rate,
+  conversion_rate,
+  SAFE_DIVIDE((sessions - previous_sessions), previous_sessions) * 100 AS sessions_wow_change,
+  SAFE_DIVIDE((pageviews - previous_pageviews), previous_pageviews) * 100 AS pageviews_wow_change,
+  SAFE_DIVIDE((users - previous_users), previous_users) * 100 AS users_wow_change,
+  SAFE_DIVIDE((bounce_rate - previous_bounce_rate), previous_bounce_rate) * 100 AS bounce_rate_wow_change,
+  SAFE_DIVIDE((conversion_rate - previous_conversion_rate), previous_conversion_rate) * 100 AS conversion_rate_wow_change
+FROM 
+  PreviousWeekData
+WHERE 
+  previous_sessions IS NOT NULL
+  AND previous_pageviews IS NOT NULL
+  AND previous_users IS NOT NULL
+  AND previous_bounce_rate IS NOT NULL
+  AND previous_conversion_rate IS NOT NULL
+ORDER BY 
+  week_start_date;
+
+
+
